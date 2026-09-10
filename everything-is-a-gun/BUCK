@@ -1,0 +1,66 @@
+load("@minecraft//:fabric.bzl", "fabric_dev_launcher", "fabric_mod")
+
+export_file(
+    name = "fabric.mod.json",
+    src = "src/main/resources/fabric.mod.json",
+)
+
+# assets/... files live on disk under src/main/resources/assets/... but need
+# to land at assets/... (not src/main/resources/assets/...) in the jar - see
+# fabric_mod()'s `resource_map` doc.
+_ASSET_PREFIX = "src/main/resources/"
+
+fabric_mod(
+    name = "everything-is-a-gun",
+    srcs = glob(["src/main/java/**/*.java"]),
+    fabric_mod_json = ":fabric.mod.json",
+    resource_map = {
+        path.removeprefix(_ASSET_PREFIX): path
+        for path in glob(["src/main/resources/assets/**"])
+    },
+    compile_only_deps = [
+        "@minecraft//:26.3-pre-3-merged",
+        "@minecraft//:fabric-loader",
+        # UseItemCallback / UseBlockCallback: nested in fabric-api at runtime,
+        # downloaded separately here solely so javac can see its API classes.
+        "@minecraft//:fabric-api-base",
+        "@minecraft//:fabric-events-interaction-v0",
+        "@minecraft//:fabric-networking-api-v1",
+        "@minecraft//:fabric-rendering-v1",
+    ],
+    # The merged jar's own class files reference vanilla libraries
+    # (DataFixerUpper, fastutil, ...) it doesn't bundle - javac needs them on
+    # the classpath to fully resolve those signatures even when our code
+    # doesn't call into them directly.
+    compile_only_lib_dirs = [
+        "@minecraft//:26.3-pre-3[libraries_flat]",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+fabric_dev_launcher(
+    name = "run_server",
+    mod = ":everything-is-a-gun",
+    minecraft_version = "@minecraft//:26.3-pre-3",
+    merged_jar = "@minecraft//:26.3-pre-3-merged",
+    fabric_loader = "@minecraft//:fabric-loader",
+    # Fabric API's own mixins keep vanilla registries (e.g. Item's) open to
+    # plain Registry.register() calls from mod init code - without it, this
+    # snapshot's new per-registry "intrusive holder" freezing (which happens
+    # before Fabric Loader calls any mod entrypoint) makes constructing new
+    # Items post-bootstrap throw. We don't call any Fabric API classes
+    # directly, so it's only needed at runtime, not compile_only_deps.
+    extra_mods = ["@minecraft//:fabric-api"],
+    side = "server",
+)
+
+fabric_dev_launcher(
+    name = "run_client",
+    mod = ":everything-is-a-gun",
+    minecraft_version = "@minecraft//:26.3-pre-3",
+    merged_jar = "@minecraft//:26.3-pre-3-merged",
+    fabric_loader = "@minecraft//:fabric-loader",
+    assets = "@minecraft//:26.3-pre-3-assets",
+    extra_mods = ["@minecraft//:fabric-api"],
+    side = "client",
+)

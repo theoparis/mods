@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "eiag",
+  "version": "0.1.0",
+  "name": "Everything Is A Gun",
+  "description": "Turns items into hitscan guns sculpted out of tiny voxel blocks. Built with Buck 2, no Gradle/Loom.",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.eiag.EverythingIsAGun"],
+    "client": ["com.eiag.client.LaserRenderer"]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.0",
+    "minecraft": "*",
+    "fabric-api": "*"
+  }
+}

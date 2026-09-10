@@ -1,0 +1,4 @@
+[submodule "third_party/buck2_modding_sandbox"]
+	path = third_party/buck2_modding_sandbox
+	url = git@github.com:theoparis/buck2_modding_sandbox.git
+	branch = eiag-fabric-api
