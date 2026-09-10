@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.eiag.LaserPayload;
+import com.eiag.RecoilPayload;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 
 import net.fabricmc.api.ClientModInitializer;
@@ -24,6 +25,14 @@ public final class LaserRenderer implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(LaserPayload.TYPE, (payload, context) ->
                 context.client().execute(() -> BEAMS.add(new Beam(
                         payload.start(), payload.end(), System.nanoTime() + LIFETIME_NANOS))));
+        ClientPlayNetworking.registerGlobalReceiver(RecoilPayload.TYPE, (payload, context) ->
+                context.client().execute(() -> {
+                    var player = context.client().player;
+                    if (player == null) return;
+                    player.setYRot(player.getYRot() + payload.yawDegrees());
+                    player.setYHeadRot(player.getYRot());
+                    player.setXRot(Math.clamp(player.getXRot() - payload.pitchDegrees(), -90.0F, 90.0F));
+                }));
         // Submit before feature buffers are prepared, not after they execute.
         LevelRenderEvents.COLLECT_SUBMITS.register(LaserRenderer::render);
     }

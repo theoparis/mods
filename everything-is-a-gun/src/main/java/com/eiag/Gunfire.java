@@ -6,6 +6,7 @@ import java.util.List;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
@@ -103,12 +104,15 @@ public final class Gunfire {
 
     /** Applies a small upward kick plus controlled horizontal variance after a shot. */
     private static void applyRecoil(Player player, GunStats stats) {
-        float kick = (float) stats.recoilDegrees();
-        if (kick <= 0.0F) return;
-        float yawKick = (player.getRandom().nextFloat() - 0.5F) * kick * 0.35F;
+        float pitchKick = (float) stats.recoilDegrees();
+        if (pitchKick <= 0.0F) return;
+        float yawKick = (player.getRandom().nextFloat() - 0.5F) * pitchKick * 0.35F;
         player.setYRot(player.getYRot() + yawKick);
         player.setYHeadRot(player.getYRot());
-        player.setXRot(Math.clamp(player.getXRot() - kick, -90.0F, 90.0F));
+        player.setXRot(Math.clamp(player.getXRot() - pitchKick, -90.0F, 90.0F));
+        if (player instanceof ServerPlayer serverPlayer) {
+            serverPlayer.connection.send(new ClientboundCustomPayloadPacket(new RecoilPayload(yawKick, pitchKick)));
+        }
     }
 
     private static void fire(ServerLevel level, Player shooter, InteractionHand hand, GunStats stats) {

@@ -12,6 +12,7 @@ public class EverythingIsAGun implements ModInitializer {
     @Override
     public void onInitialize() {
         PayloadTypeRegistry.clientboundPlay().register(LaserPayload.TYPE, LaserPayload.CODEC);
+        PayloadTypeRegistry.clientboundPlay().register(RecoilPayload.TYPE, RecoilPayload.CODEC);
         UseItemCallback.EVENT.register((player, level, hand) -> {
             Gunfire.use(player, level, hand);
             return InteractionResult.SUCCESS;
