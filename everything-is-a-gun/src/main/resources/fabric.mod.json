@@ -7,8 +7,9 @@
   "environment": "*",
   "entrypoints": {
     "main": ["com.eiag.EverythingIsAGun"],
-    "client": ["com.eiag.client.LaserRenderer"]
+    "client": ["com.eiag.client.LaserRenderer", "com.eiag.client.GunTooltip"]
   },
+  "mixins": ["eiag.mixins.json"],
   "depends": {
     "fabricloader": ">=0.19.0",
     "minecraft": "*",

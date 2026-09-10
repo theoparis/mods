@@ -14,6 +14,7 @@ fabric_mod(
     name = "everything-is-a-gun",
     srcs = glob(["src/main/java/**/*.java"]),
     fabric_mod_json = ":fabric.mod.json",
+    mixin_configs = {"eiag.mixins.json": "src/main/resources/eiag.mixins.json"},
     resource_map = {
         path.removeprefix(_ASSET_PREFIX): path
         for path in glob(["src/main/resources/assets/**"])
@@ -26,6 +27,7 @@ fabric_mod(
         "@minecraft//:fabric-api-base",
         "@minecraft//:fabric-events-interaction-v0",
         "@minecraft//:fabric-networking-api-v1",
+        "@minecraft//:fabric-lifecycle-events-v1",
         "@minecraft//:fabric-rendering-v1",
     ],
     # The merged jar's own class files reference vanilla libraries

@@ -1,5 +1,6 @@
 package com.eiag;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import net.minecraft.core.particles.ParticleTypes;
@@ -12,6 +13,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.SwingAnimation;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
@@ -22,11 +24,63 @@ import net.minecraft.world.phys.Vec3;
 
 /** Shared gun behaviour for genuine vanilla item stacks. */
 public final class Gunfire {
-    private static final float DAMAGE = 4.0F;
-    private static final double RANGE = 48.0;
-    private static final int COOLDOWN_TICKS = 7;
+    private record GunpowderProjectile(ServerLevel level, Player shooter, LivingEntity target,
+            Vec3 start, Vec3 end, Vec3 direction, GunStats stats, int age, int duration) {}
+    private static final List<GunpowderProjectile> GUNPOWDER_PROJECTILES = new ArrayList<>();
 
     private Gunfire() {}
+
+    /** Advances slow gunpowder shots on the authoritative server tick. */
+    public static void tickProjectiles(ServerLevel level) {
+        for (int i = GUNPOWDER_PROJECTILES.size() - 1; i >= 0; i--) {
+            GunpowderProjectile shot = GUNPOWDER_PROJECTILES.get(i);
+            if (shot.level != level) continue;
+            int age = shot.age + 1;
+            double progress = Math.min(1.0, (double) age / shot.duration);
+            Vec3 point = ballisticPoint(shot.start, shot.end, progress);
+            level.sendParticles(ParticleTypes.FLAME, true, true, point.x, point.y, point.z,
+                    5, 0.09, 0.09, 0.09, 0.012);
+            level.sendParticles(ParticleTypes.SMOKE, true, true, point.x, point.y, point.z,
+                    1, 0.03, 0.03, 0.03, 0.003);
+            if (progress < 1.0) {
+                GUNPOWDER_PROJECTILES.set(i, new GunpowderProjectile(level, shot.shooter, shot.target,
+                        shot.start, shot.end, shot.direction, shot.stats, age, shot.duration));
+                continue;
+            }
+            GUNPOWDER_PROJECTILES.remove(i);
+            // Explosion damage is evaluated now, rather than retaining only the original ray target.
+            // This catches enemies which walk into the blast while the fireball is in flight.
+            double blastRadius = 3.5;
+            var source = level.damageSources().playerAttack(shot.shooter);
+            for (Entity entity : level.getEntities(shot.shooter,
+                    new AABB(point, point).inflate(blastRadius), Entity::isAlive)) {
+                if (!(entity instanceof LivingEntity living)) continue;
+                double distance = living.getBoundingBox().getCenter().distanceTo(point);
+                if (distance > blastRadius) continue;
+                float damage = (float) (shot.stats.damage() * (1.0 - distance / blastRadius));
+                if (damage <= 0.0F) continue;
+                living.hurtServer(level, source, damage);
+                Vec3 away = living.position().subtract(point);
+                living.knockback(1.1 * (1.0 - distance / blastRadius), away.x, away.z, source, 0.25F);
+            }
+            level.sendParticles(ParticleTypes.EXPLOSION_EMITTER, true, true, point.x, point.y, point.z,
+                    1, 0, 0, 0, 0);
+            level.sendParticles(ParticleTypes.FLAME, true, true, point.x, point.y, point.z,
+                    30, 0.65, 0.65, 0.65, 0.08);
+            level.playSound(null, point.x, point.y, point.z, SoundEvents.GENERIC_EXPLODE.value(),
+                    SoundSource.PLAYERS, 1.0F, 1.0F);
+        }
+    }
+
+    /**
+     * A gravity-like arc which begins and ends exactly at the authoritative ray endpoints.
+     * This keeps the explosion at the aimed destination while making its flight visibly fall.
+     */
+    private static Vec3 ballisticPoint(Vec3 start, Vec3 end, double progress) {
+        double distance = start.distanceTo(end);
+        double arcHeight = Math.min(6.0, Math.max(0.75, distance * 0.12));
+        return start.lerp(end, progress).add(0, 4.0 * arcHeight * progress * (1.0 - progress), 0);
+    }
 
     /** Fires the stack currently held by {@code player}; called on both sides by Fabric's callbacks. */
     public static void use(Player player, Level level, InteractionHand hand) {
@@ -34,21 +88,33 @@ public final class Gunfire {
         if (player.getCooldowns().isOnCooldown(stack)) {
             return;
         }
-        player.getCooldowns().addCooldown(stack, COOLDOWN_TICKS);
+        GunStats stats = GunStats.forStack(stack);
+        player.getCooldowns().addCooldown(stack, stats.cooldownTicks());
         player.swing(hand, SwingAnimation.DEFAULT, true);
 
         // Damage and authoritative particles/sound belong on the logical server.
         if (level instanceof ServerLevel serverLevel) {
             level.playSound(null, player.getX(), player.getY(), player.getZ(),
                     SoundEvents.DISPENSER_FAIL, SoundSource.PLAYERS, 1.0F, 1.0F);
-            fire(serverLevel, player, hand);
+            fire(serverLevel, player, hand, stats);
+            applyRecoil(player, stats);
         }
     }
 
-    private static void fire(ServerLevel level, Player shooter, InteractionHand hand) {
+    /** Applies a small upward kick plus controlled horizontal variance after a shot. */
+    private static void applyRecoil(Player player, GunStats stats) {
+        float kick = (float) stats.recoilDegrees();
+        if (kick <= 0.0F) return;
+        float yawKick = (player.getRandom().nextFloat() - 0.5F) * kick * 0.35F;
+        player.setYRot(player.getYRot() + yawKick);
+        player.setYHeadRot(player.getYRot());
+        player.setXRot(Math.clamp(player.getXRot() - kick, -90.0F, 90.0F));
+    }
+
+    private static void fire(ServerLevel level, Player shooter, InteractionHand hand, GunStats stats) {
         Vec3 eye = shooter.getEyePosition(1.0F);
         Vec3 look = shooter.getLookAngle();
-        Vec3 end = eye.add(look.scale(RANGE));
+        Vec3 end = eye.add(look.scale(stats.range()));
         BlockHitResult block = level.clip(new ClipContext(
                 eye, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, shooter));
         Vec3 traceEnd = block.getType() == HitResult.Type.MISS ? end : block.getLocation();
@@ -56,7 +122,7 @@ public final class Gunfire {
 
         Entity target = null;
         Vec3 targetPos = null;
-        AABB search = shooter.getBoundingBox().expandTowards(look.scale(RANGE)).inflate(1.0);
+        AABB search = shooter.getBoundingBox().expandTowards(look.scale(stats.range())).inflate(1.0);
         List<Entity> candidates = level.getEntities(shooter, search,
                 entity -> entity.isPickable() && !entity.isSpectator());
         for (Entity candidate : candidates) {
@@ -70,12 +136,20 @@ public final class Gunfire {
             }
         }
 
+        Vec3 impact = targetPos != null ? targetPos : traceEnd;
+        if (shooter.getItemInHand(hand).is(Items.GUNPOWDER)) {
+            int travelTicks = Math.clamp((int) Math.ceil(eye.distanceTo(impact) / 1.5), 2, 40);
+            LivingEntity living = target instanceof LivingEntity entity ? entity : null;
+            GUNPOWDER_PROJECTILES.add(new GunpowderProjectile(level, shooter, living, eye, impact,
+                    look, stats, 0, travelTicks));
+            level.playSound(null, eye.x, eye.y, eye.z, SoundEvents.TNT_PRIMED, SoundSource.PLAYERS, 0.8F, 1.3F);
+            return;
+        }
         if (target instanceof LivingEntity living) {
             var source = level.damageSources().playerAttack(shooter);
-            living.hurtServer(level, source, DAMAGE);
+            living.hurtServer(level, source, stats.damage());
             living.knockback(0.4, look.x, look.z, source, 0.0F);
         }
-        Vec3 impact = targetPos != null ? targetPos : traceEnd;
         // Visual muzzle approximation only; damage still uses the eye ray.
         double yaw = Math.toRadians(shooter.getYRot());
         Vec3 right = new Vec3(-Math.cos(yaw), 0, -Math.sin(yaw));
