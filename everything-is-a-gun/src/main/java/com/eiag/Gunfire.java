@@ -9,6 +9,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -16,7 +17,6 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ClipContext;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -82,27 +82,28 @@ public final class Gunfire {
         return start.lerp(end, progress).add(0, 4.0 * arcHeight * progress * (1.0 - progress), 0);
     }
 
-    /** Fires the stack currently held by {@code player}; called on both sides by Fabric's callbacks. */
-    public static boolean use(Player player, Level level, InteractionHand hand) {
+    /** Handles the single client fire-request path; only the server may accept a shot. */
+    public static void use(ServerPlayer player, InteractionHand hand, float yawDegrees, float pitchDegrees) {
+        if (player.isSpectator() || !player.isAlive()
+                || !Float.isFinite(yawDegrees) || !Float.isFinite(pitchDegrees)) return;
         ItemStack stack = player.getItemInHand(hand);
-        if (player.getCooldowns().isOnCooldown(stack)) {
-            return false;
-        }
+        ServerLevel level = player.level();
+        if (stack.isEmpty() || !stack.isItemEnabled(level.enabledFeatures())
+                || player.getCooldowns().isOnCooldown(stack)) return;
         GunStats stats = GunStats.forStack(stack);
         player.getCooldowns().addCooldown(stack, stats.cooldownTicks());
-
-        // Damage and authoritative particles/sound belong on the logical server.
-        if (level instanceof ServerLevel serverLevel) {
-            level.playSound(null, player.getX(), player.getY(), player.getZ(),
-                    SoundEvents.DISPENSER_FAIL, SoundSource.PLAYERS, 1.0F, 1.0F);
-            fire(serverLevel, player, hand, stats);
-            applyRecoil(player, stats);
-        }
-        return true;
+        // Like vanilla's use-item packet, use the aim at the instant of the click.
+        player.setYRot(Mth.wrapDegrees(yawDegrees));
+        player.setYHeadRot(player.getYRot());
+        player.setXRot(Math.clamp(pitchDegrees, -90.0F, 90.0F));
+        level.playSound(null, player.getX(), player.getY(), player.getZ(),
+                SoundEvents.DISPENSER_FAIL, SoundSource.PLAYERS, 1.0F, 1.0F);
+        fire(level, player, hand, stats);
+        applyRecoil(player, stats);
     }
 
     /** Applies a small upward kick plus controlled horizontal variance after a shot. */
-    private static void applyRecoil(Player player, GunStats stats) {
+    private static void applyRecoil(ServerPlayer player, GunStats stats) {
         float pitchKick = (float) stats.recoilDegrees();
         float yawKick = pitchKick <= 0.0F ? 0.0F
                 : (player.getRandom().nextFloat() - 0.5F) * pitchKick * 0.35F;
@@ -113,9 +114,7 @@ public final class Gunfire {
         }
         // This packet doubles as a shot-confirmation for the held-model animation,
         // including max-control weapons whose physical recoil is zero.
-        if (player instanceof ServerPlayer serverPlayer) {
-            serverPlayer.connection.send(new ClientboundCustomPayloadPacket(new RecoilPayload(yawKick, pitchKick)));
-        }
+        player.connection.send(new ClientboundCustomPayloadPacket(new RecoilPayload(yawKick, pitchKick)));
     }
 
     private static void fire(ServerLevel level, Player shooter, InteractionHand hand, GunStats stats) {

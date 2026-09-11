@@ -22,10 +22,8 @@ fabric_mod(
     compile_only_deps = [
         "@minecraft//:26.3-pre-3-merged",
         "@minecraft//:fabric-loader",
-        # UseItemCallback / UseBlockCallback: nested in fabric-api at runtime,
-        # downloaded separately here solely so javac can see its API classes.
+        # Network fire requests and server projectile ticking.
         "@minecraft//:fabric-api-base",
-        "@minecraft//:fabric-events-interaction-v0",
         "@minecraft//:fabric-networking-api-v1",
         "@minecraft//:fabric-lifecycle-events-v1",
         "@minecraft//:fabric-rendering-v1",

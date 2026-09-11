@@ -1,5 +1,6 @@
 package com.eiag.mixin.client;
 
+import com.eiag.GunType;
 import com.eiag.client.GunModel;
 import com.eiag.client.GunRenderState;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -19,6 +20,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(ItemStackRenderState.class)
 public abstract class GunItemStackRenderStateMixin implements GunRenderState {
     @Unique private ItemDisplayContext eiag$gunContext = ItemDisplayContext.NONE;
+    @Unique private GunType eiag$gunType = GunType.PISTOL;
     @Unique private boolean eiag$insideMiniature;
 
     @Shadow public abstract void submit(PoseStack poses, SubmitNodeCollector collector,
@@ -26,13 +28,15 @@ public abstract class GunItemStackRenderStateMixin implements GunRenderState {
     @Shadow public abstract void visitExtents(Consumer<Vector3fc> consumer);
 
     @Override
-    public void eiag$setGunContext(ItemDisplayContext context) {
+    public void eiag$setGunContext(ItemDisplayContext context, GunType type) {
         eiag$gunContext = context;
+        eiag$gunType = type;
     }
 
     @Inject(method = "clear", at = @At("HEAD"))
     private void eiag$clearGun(CallbackInfo ci) {
         eiag$gunContext = ItemDisplayContext.NONE;
+        eiag$gunType = GunType.PISTOL;
         eiag$insideMiniature = false;
     }
 
@@ -44,10 +48,10 @@ public abstract class GunItemStackRenderStateMixin implements GunRenderState {
         poses.pushPose();
         try {
             GunModel.applyHandTransform(poses, eiag$gunContext);
-            for (int i = 0; i < GunModel.miniatureCount(); i++) {
+            for (int i = 0, count = GunModel.miniatureCount(eiag$gunType); i < count; i++) {
                 poses.pushPose();
                 try {
-                    GunModel.applyMiniatureTransform(poses, i);
+                    GunModel.applyMiniatureTransform(poses, eiag$gunType, i);
                     // Reuse resolved layers, tints, glint, and special renderers. Never
                     // resolve the stack or bake/copy its geometry per miniature.
                     submit(poses, collector, light, overlay, outlineColor);
@@ -71,9 +75,9 @@ public abstract class GunItemStackRenderStateMixin implements GunRenderState {
         eiag$insideMiniature = true;
         try {
             GunModel.applyHandTransform(poses, eiag$gunContext);
-            for (int i = 0; i < GunModel.miniatureCount(); i++) {
+            for (int i = 0, count = GunModel.miniatureCount(eiag$gunType); i < count; i++) {
                 poses.pushPose();
-                GunModel.applyMiniatureTransform(poses, i);
+                GunModel.applyMiniatureTransform(poses, eiag$gunType, i);
                 visitExtents(transformed);
                 poses.popPose();
             }

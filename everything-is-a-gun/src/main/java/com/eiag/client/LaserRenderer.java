@@ -3,16 +3,12 @@ package com.eiag.client;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.eiag.FirePayload;
-import com.eiag.Gunfire;
 import com.eiag.LaserPayload;
 import com.eiag.RecoilPayload;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
-import net.fabricmc.fabric.api.event.player.UseEntityCallback;
-import net.minecraft.world.InteractionResult;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.world.phys.Vec3;
@@ -26,13 +22,6 @@ public final class LaserRenderer implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        GunFireAnimation.registerInputTrigger();
-        UseEntityCallback.EVENT.register((player, level, hand, entity, hit) -> {
-            if (!level.isClientSide() || !Gunfire.use(player, level, hand)) return InteractionResult.PASS;
-            ClientPlayNetworking.send(new FirePayload(hand));
-            // Our packet is the interaction; do not send vanilla's range-limited entity-use packet.
-            return InteractionResult.FAIL;
-        });
         ClientPlayNetworking.registerGlobalReceiver(LaserPayload.TYPE, (payload, context) ->
                 context.client().execute(() -> BEAMS.add(new Beam(
                         payload.start(), payload.end(), System.nanoTime() + LIFETIME_NANOS))));

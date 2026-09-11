@@ -1,5 +1,6 @@
 package com.eiag.mixin.client;
 
+import com.eiag.GunType;
 import com.eiag.client.GunRenderState;
 import com.eiag.client.GunModel;
 import net.minecraft.client.renderer.item.ItemModelResolver;
@@ -27,7 +28,7 @@ public abstract class GunItemModelResolverMixin {
         // NONE resolves the real item without its hand/GUI display transform. It also
         // terminates this interception; nested composite models are resolved only once.
         updateForTopItem(state, stack, ItemDisplayContext.NONE, level, owner, seed);
-        ((GunRenderState) state).eiag$setGunContext(context);
+        ((GunRenderState) state).eiag$setGunContext(context, GunType.forStack(stack));
         ci.cancel();
     }
 }
